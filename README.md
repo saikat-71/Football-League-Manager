@@ -1,94 +1,315 @@
-# Touchline — Football League Manager
+# Touchline --- Football League Manager
 
-A mobile-responsive football league management web app. The supplied Season 7 dataset is retained (`data/league.json` and `data/seed.js`), including 372 player records, 9 legacy clubs and prize records. The app now uses Supabase Auth + PostgreSQL rather than treating browser `localStorage` as a shared database.
+A responsive football league management web application for organizing
+player records, teams, auctions, transfers, fixtures, standings, and
+account access. The frontend is a static website designed for GitHub
+Pages, with Supabase providing authentication and the shared PostgreSQL
+database.
 
-## Important: one-time backend setup
+> **Important:** The website cannot connect to your own Supabase project
+> until you configure `data/config.js` and run the SQL schema. A
+> successful local syntax check does not prove that live authentication,
+> database policies, email delivery, or deployment are working.
 
-GitHub Pages serves static files only. It cannot securely run authentication, enforce permissions or coordinate bids by itself. This project therefore needs a Supabase project (the free tier is suitable for a prototype; check current quotas before production use).
+## Contents
 
-1. Create a Supabase project.
-2. In **SQL Editor**, run the complete `supabase/schema.sql` file.
-3. In **Project Settings → API**, copy the Project URL and the `anon` / publishable public key.
-4. Edit `data/config.js` and replace `YOUR-PROJECT` and `YOUR_SUPABASE_ANON_KEY` with those values. **Never put the service-role key in browser code.**
-5. Enable email/password sign-in in **Authentication → Providers**. Set Site URL and allowed redirect URLs to your deployed GitHub Pages URL and your local development URL if needed.
-6. Publish the whole folder to GitHub Pages from the repository root.
-7. Create your first account in the website. In Supabase SQL Editor, promote it to the initial Admin by replacing the username below. This is a one-time secure bootstrap step; after that, routine account approvals, role changes, team/auction/fixture and other league operations are managed from the website Admin Dashboard:
+-   [Features](#features)
+-   [Technology stack](#technology-stack)
+-   [Project structure](#project-structure)
+-   [Requirements](#requirements)
+-   [Setup Supabase](#1-create-and-configure-supabase)
+-   [Configure the website](#2-configure-the-frontend)
+-   [Deploy to GitHub Pages](#3-deploy-to-github-pages)
+-   [Create the first Admin](#4-create-the-first-admin)
+-   [Import the player list](#5-import-the-player-list)
+-   [Account and email confirmation](#account-and-email-confirmation)
+-   [Mobile Home Screen icon](#mobile-home-screen-installation)
+-   [Profile image and mobile logout](#profile-image-and-mobile-logout)
+-   [Testing checklist](#testing-checklist)
+-   [Security notes](#security-notes)
+-   [Troubleshooting](#troubleshooting)
 
-   ```sql
-   update public.profiles
-   set role = 'admin', status = 'active'
-   where username = 'YOUR_USERNAME';
-   ```
+## Features
 
-8. Sign out and sign back in. New accounts are `pending` until an Admin approves them in **User Accounts**. After approval, a User can create one active team immediately; there is no separate team-approval step. New Users register themselves on the website; the Admin does not send invitation emails in this no-Edge-Function build.
-9. As Admin, open **Settings & Audit → Import players from Excel** once. The importer skips player records whose `legacy_id` already exists. Review legacy ownership and budgets before treating the imported data as official.
+-   Public dashboard opens before sign-in; visitors can browse public
+    league information.
+-   Sign-in and registration are available from the navigation.
+-   Supabase email/password authentication and Admin/User role
+    separation.
+-   New accounts can remain pending until an Admin approves them.
+-   Player database with positions, status, ratings and Admin
+    management.
+-   Import the bundled list of **184 unique players**, or import a
+    compatible Excel/CSV file.
+-   Player-only import: imported players are free agents, with no team
+    ownership assigned.
+-   Team and squad management, auctions, bids, transfers, fixtures,
+    results and standings supported by the database schema.
+-   Settings, budget adjustments, audit history and account management
+    for Admins.
+-   Responsive desktop, tablet and mobile layout.
+-   Touchline branding, browser favicon, web app manifest and mobile
+    Home Screen icon support.
+-   Profile image upload from My Profile (JPG, PNG or WebP, up to 5 MB).
+    The image is resized and stored in that browser's local storage; it
+    does **not** automatically sync to other devices.
+-   A sign-out option is available in the mobile navigation for
+    signed-in users.
 
-## What is implemented in this update
+## Technology stack
 
-- Supabase email/password authentication, pending account approval, Admin/User role separation and website-based account status/role management. New Users register themselves from the website and Admin approves them in User Accounts. Account archive preserves competition history, cancels active bids/transfers, releases players and disables access in this app; physical deletion of the Supabase Auth identity is not included because that requires a privileged server-side Auth API.
-- PostgreSQL schema with Row Level Security (RLS); browser code uses only the public anon key.
-- Public read-only pages for player records, teams/squads and fixtures/standings.
-- One team per account enforced by a unique `owner_id`; an approved User can create one active team immediately, while Admin can later deactivate/reactivate it, manage formation/budget and delete it with history retention. Deleted team rows are retained for historical fixtures and transactions; players become free agents.
-- Player database, detailed football positions, Admin player create/edit/delete, User player proposals, Admin verification and final base price.
-- Multiple simultaneous auction records, Admin start/pause/resume/cancel, fixed countdowns, minimum increment, atomic bid placement, budget reservation across active bids and automatic resolution when an authenticated app session polls for expired auctions.
-- Auction winner finalization and purchase ledger update in a database transaction; no second deduction at settlement.
-- Transfer request creation through a checked database function, buyer/seller acceptance, player lock and atomic ownership/ledger settlement.
-- Admin fixture creation, result entry/correction with audit trail, automatically calculated points table (3/1/0; GD; goals scored).
-- In-app notifications, budget adjustment ledger and audit history.
-- Responsive desktop, tablet and mobile layout.
+-   HTML5, CSS3 and vanilla JavaScript
+-   Supabase Auth
+-   Supabase PostgreSQL, Row Level Security (RLS), and database
+    functions
+-   SheetJS browser library for Excel import
+-   Web App Manifest and Apple touch icon metadata
+-   GitHub Pages (static hosting)
 
-## Auction timing / automatic expiry
+## Project structure
 
-Countdowns are fixed and are not extended by new bids. The app calls `resolve_expired_auctions()` while an authenticated session is open, so an expired auction is finalized when an active client polls. For unattended, exact background finalization, enable Supabase `pg_cron` (if available on your project) and schedule the database function every minute. Example after enabling the extension:
-
-```sql
-select cron.schedule(
-  'touchline-resolve-expired-auctions',
-  '* * * * *',
-  $$ select public.resolve_expired_auctions(); $$
-);
+``` text
+Football-League-Manager-main/
+├── index.html                 # Main HTML entry point
+├── app.js                     # Frontend application and interactions
+├── styles.css                 # Responsive styling
+├── manifest.webmanifest       # Installable web app metadata
+├── assets/
+│   └── touchline-logo.png     # Touchline logo / app icon source
+├── data/
+│   ├── config.js              # Supabase URL and public anon key
+│   ├── player-list.json       # Bundled list of 184 unique players
+│   ├── league.json            # Retained legacy league dataset
+│   └── seed.js                # Retained legacy seed data
+└── supabase/
+    ├── schema.sql             # Database schema, RLS and functions
+    └── migrations/
+        └── 20261030_admin_dashboard_without_edge_function.sql
 ```
 
-## Security and configuration notes
+## Requirements
 
-- RLS is the security boundary. UI role checks are only presentation; server-side policies/RPCs validate important operations.
-- Do not share or commit a Supabase service-role secret. `data/config.js` must contain only the project URL and public anon/publishable key.
-- Password recovery is intentionally Admin-assisted in this version; no public self-service reset flow is wired.
-- Admin promotion is performed once from SQL Editor. Keep at least one active Admin account.
-- The historical workbook's balances are provisional. The original data notes show that legacy balance-owner labels do not fully match current Season 7 club names; reconcile them before official use.
-- Money values are stored as whole/decimal units and shown using the configured currency label (default `TK M`).
+-   A GitHub account and a repository for the site
+-   A Supabase project
+-   A modern browser
+-   The project files at the repository root for the standard GitHub
+    Pages project URL
 
-## Validation performed in this workspace
+## 1. Create and configure Supabase
 
-- JavaScript syntax checked with Node.js.
-- `data/league.json` parsed as valid JSON.
-- ZIP contents and source dataset structure inspected.
+1.  Create a project in the Supabase dashboard.
+2.  Open **SQL Editor**.
+3.  Run the complete `supabase/schema.sql` script from this repository.
+4.  Open **Project Settings → API** and copy the Project URL and the
+    **anon/publishable public key**.
+5.  In **Authentication → Providers**, enable Email/password sign-in.
+6.  In **Authentication → URL Configuration**, configure the deployed
+    site URL and redirect allow list as described below.
 
-## Not verified here
+Do not put a Supabase `service_role` key in frontend files. It is a
+privileged secret and must never be committed to GitHub.
 
-- A live Supabase project is not connected because no project URL/key were provided.
-- The SQL schema has not been executed against a real Supabase database in this workspace.
-- Live multi-user bidding, email confirmation, RLS policies, background cron, GitHub Pages deployment and real device/browser behaviour therefore remain **unverified** until you configure and test your own Supabase project.
+## 2. Configure the frontend
 
-## Project files
+Edit `data/config.js`:
 
-- `index.html` — app entry point
-- `styles.css` — responsive interface
-- `app.js` — frontend workflows
-- `data/config.js` — public Supabase configuration placeholders
-- `data/league.json` — original dataset and import source
-- `data/seed.js` — retained legacy first-load dataset
-- `supabase/schema.sql` — tables, RLS, checked RPC functions and audit/transaction schema
+``` js
+window.APP_CONFIG = {
+  supabaseUrl: "https://YOUR-PROJECT.supabase.co",
+  supabaseAnonKey: "YOUR_PUBLIC_ANON_OR_PUBLISHABLE_KEY",
+  appName: "Touchline Football League Manager",
+  siteUrl: "https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPOSITORY/",
+  currencyLabel: "TK M"
+};
+```
 
+Replace the example values with your own Supabase URL, public key and
+deployed website URL. Keep the trailing slash on the site URL.
 
-## Excel player import and email redirect
-- Email confirmation redirects to `https://saikat-71.github.io/Football-League-Manager/` and then shows the login screen. In Supabase Auth URL Configuration, set that as Site URL and allow `https://saikat-71.github.io/Football-League-Manager/**`.
-- Admin can import `.xlsx`, `.xls`, or `.csv` from Settings & Audit. Only player rows are imported; all imported players are free agents with no owner. Teams, clubs, ownership, and budgets are not imported.
-- Expected column: `Name` or `Player Name`. Optional: `ID`, `Position`, `Rating`/`Overall`, `Age`, `Nationality`, `Base Price`/`Price`.
+For this project, the intended GitHub Pages URL is:
 
+`https://saikat-71.github.io/Football-League-Manager/`
 
-## Public dashboard, install icon, and bundled player list
+Use that exact URL in `data/config.js` if you are deploying to that
+repository.
 
-The app now opens on the public dashboard before authentication. Sign-in and registration are available from the sidebar/top bar. A `manifest.webmanifest` and Apple touch icon reference are included so the Touchline logo can appear when the site is added to a phone's Home Screen.
+## 3. Deploy to GitHub Pages
 
-The Excel workbook's **Auction Players with Positions** worksheet was normalized into `data/player-list.json` (184 unique players). After configuring Supabase and promoting your first account to Admin, choose **Import bundled 184-player list** from the dashboard or Settings & Audit. This imports only player records as free agents with `owner_team_id = null`; it creates no teams and imports no ownership or budgets. Existing matching IDs/names are skipped. The source sheet did not provide dependable age, nationality, or base-price data, so those fields are blank/1 respectively and can be edited later. The import must be initiated by an authenticated Admin; it is not silently run against the database.
+1.  Upload the project contents to the root of your GitHub repository.
+    The `index.html` file should be at the published root, not buried in
+    an extra folder.
+2.  Open the repository's **Settings → Pages**.
+3.  Choose the `main` branch and `/ (root)` as the publishing source, if
+    that matches your repository structure.
+4.  Save and wait for the deployment to finish.
+5.  Open the published URL and verify the public dashboard loads.
+
+If you use a different branch or build process, configure Pages to match
+that setup.
+
+## 4. Create the first Admin
+
+Create an account through the website first. Then open Supabase **SQL
+Editor** and promote that account using its exact username:
+
+``` sql
+update public.profiles
+set role = 'admin',
+    status = 'active'
+where username = 'YOUR_USERNAME';
+```
+
+Replace `YOUR_USERNAME` with the username you registered. Run this
+one-time bootstrap only for the account that should be the initial
+Admin. Then sign out and sign back in.
+
+New accounts may remain pending until an Admin approves them from the
+website's account-management screen. Keep at least one active Admin
+account.
+
+## 5. Import the player list
+
+After signing in as an Admin:
+
+1.  Open the dashboard or **Settings & Audit**.
+2.  Select **Import bundled 184-player list** to import the supplied
+    list, or select **Import Excel/CSV** to choose your own spreadsheet.
+3.  Review the import result and inspect the player list.
+
+### Player-only import rules
+
+-   Players are imported as free agents.
+-   `owner_team_id` is left empty (`null`).
+-   The importer does not create teams or clubs.
+-   Team ownership and team budgets are not imported.
+-   Existing matching player IDs/names are skipped to reduce duplicates.
+
+For a custom Excel workbook, the importer expects a column named `Name`
+or `Player Name`. Optional columns include `ID`, `Position`, `Rating` or
+`Overall`, `Age`, `Nationality`, and `Base Price` or `Price`. The
+importer reads the first worksheet. Export the workbook to CSV if your
+browser or spreadsheet format causes problems.
+
+The bundled list has 184 unique player records. Some fields, such as
+age, nationality or base price, may be blank or use a default when the
+source workbook did not provide reliable values. Review those fields
+before using them for an official auction.
+
+**Importing is an Admin action and writes to the connected Supabase
+database.** It is not performed merely by opening the website.
+
+## Account and email confirmation
+
+In Supabase **Authentication → URL Configuration**, set:
+
+-   **Site URL:** `https://saikat-71.github.io/Football-League-Manager/`
+-   **Allowed Redirect URLs:**
+    `https://saikat-71.github.io/Football-League-Manager/**`
+
+Add your local development URL only if you use one. The confirmation
+email template must preserve Supabase's confirmation URL (commonly
+`{{ .ConfirmationURL }}`) so the configured redirect can be applied.
+
+After a user confirms their email, the app is intended to return to the
+website and show the login screen. Test this using a newly registered
+account and the actual email delivered by your Supabase project.
+
+## Mobile Home Screen installation
+
+The project includes a web manifest and a Touchline icon reference.
+
+-   **iPhone/iPad:** Open the deployed website in Safari → tap **Share**
+    → **Add to Home Screen** → **Add**.
+-   **Android:** Open the website in Chrome → open the browser menu →
+    **Install app** or **Add to Home screen**, depending on the browser.
+
+Deploy the icon and manifest files before installing. If an old icon
+remains, remove the existing Home Screen shortcut and add it again after
+clearing the browser cache.
+
+## Profile image and mobile logout
+
+-   Open **My Profile** and choose **Choose image** to upload a JPG, PNG
+    or WebP file up to 5 MB.
+-   The image is resized and saved in the current browser's local
+    storage. It is specific to that browser/device and can be lost if
+    that site's local storage is cleared.
+-   Use **Remove image** to clear it.
+-   Signed-in mobile users should see **Logout/Sign out** in the mobile
+    navigation. If it does not appear after deployment, refresh the
+    page, sign in again, and verify that the updated `app.js` and
+    `styles.css` were both uploaded.
+
+## Testing checklist
+
+Before using the website for a real league, test:
+
+-   [ ] Public dashboard opens without requiring login.
+-   [ ] Sign-in and registration links open the correct screens.
+-   [ ] Email confirmation returns to the intended website URL.
+-   [ ] Admin and regular-user permissions behave correctly.
+-   [ ] A new account can be approved by an Admin.
+-   [ ] Bundled import creates players only and leaves team ownership
+    empty.
+-   [ ] Re-running the import skips existing matching players.
+-   [ ] Profile image upload and removal work on desktop and mobile.
+-   [ ] Sign-out is visible and works on a narrow mobile screen.
+-   [ ] Home Screen shortcut displays the Touchline icon.
+-   [ ] Auctions, transfers, fixtures and standings work with multiple
+    test accounts.
+
+## Security notes
+
+-   Row Level Security (RLS) and database-side functions are important
+    security boundaries; hiding a button in the UI is not sufficient
+    authorization.
+-   Never publish the Supabase `service_role` secret.
+-   The public anon/publishable key is designed for frontend use only
+    when database policies are configured correctly.
+-   Avoid importing unreviewed spreadsheets into a production league
+    database.
+-   Take a database backup before major migrations or bulk imports.
+-   The account archive workflow does not necessarily physically delete
+    a Supabase Auth identity; privileged Auth operations require a
+    trusted server-side environment.
+-   Password recovery and background auction finalization may require
+    additional configuration depending on the deployed version and
+    Supabase project.
+
+## Troubleshooting
+
+**The page is blank or does not load** - Check the GitHub Pages
+deployment status and confirm `index.html` is in the published root. -
+Check browser developer tools for JavaScript errors. - Verify the file
+paths and letter casing; GitHub Pages hosting is case-sensitive.
+
+**Login or registration fails** - Confirm `data/config.js` has the
+correct Supabase URL and public key. - Ensure Email/password
+authentication is enabled. - Check Supabase Auth URL Configuration and
+the email confirmation template. - Review Supabase logs for the exact
+error.
+
+**Player import fails** - Confirm you are signed in as an active
+Admin. - Check that `supabase/schema.sql` has been run successfully. -
+Confirm the spreadsheet contains a `Name` or `Player Name` header. -
+Review the browser console and Supabase logs.
+
+**The website works on Wi-Fi but not mobile data** - This can be caused
+by DNS, carrier filtering, browser caching or network routing. Test
+another network and DNS resolver, and check the domain's current
+reachability independently. A successful Wi-Fi test alone does not prove
+global availability.
+
+## Validation status
+
+The source files can be checked for syntax and archive integrity in a
+development environment. This README does not claim that the live
+Supabase backend, email confirmation, GitHub Pages deployment, database
+security policies or real-device behavior have been verified. Test those
+items in your own deployed environment before relying on the app for a
+live competition.
+
+## License
+
+No license is specified in this repository. Add a `LICENSE` file if you
+intend to grant others permission to reuse or redistribute the project.
