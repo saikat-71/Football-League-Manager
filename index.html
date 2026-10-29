@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#10251b"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Touchline"><meta name="description" content="Football League Manager — teams, live auctions, transfers and league standings.">
+  <title>Touchline — Football League Manager</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/png" href="assets/touchline-logo.png"><link rel="apple-touch-icon" href="assets/touchline-logo.png"><link rel="manifest" href="manifest.webmanifest">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="data/config.js"></script>
+</head>
+<body>
+  <div id="app"><div class="boot"><div class="logo"><img src="assets/touchline-logo.png" alt="Touchline logo"></div><h1>TOUCHLINE</h1><p>Loading Football League Manager…</p></div></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script src="app.js"></script>
+</body>
+</html>
